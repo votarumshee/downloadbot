@@ -1,0 +1,26 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: downloadbot
+          POSTGRES_PASSWORD: test-only-password
+          POSTGRES_DB: downloadbot_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U downloadbot -d downloadbot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DOWNLOADBOT_TEST_DATABASE_URL: postgresql://downloadbot:test-only-password@127.0.0.1:5432/downloadbot_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -c constraints.txt -e '.[dev]'
+      - run: ruff check src tests scripts
+      - run: pytest

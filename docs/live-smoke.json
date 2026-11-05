@@ -1,0 +1,85 @@
+{
+  "tested_at": "2026-11-05T19:41:03.160552+00:00",
+  "transport": "real HTTP API and worker",
+  "elapsed_seconds": 84.27,
+  "results": [
+    {
+      "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+      "job_id": "6c031d86-b262-444a-adfc-817b3077df18",
+      "platform": "youtube",
+      "status": "failed",
+      "attempt": 1,
+      "error": {
+        "code": "network_error",
+        "message": "The video service could not be reached safely; try again later."
+      },
+      "title": null,
+      "duration": null,
+      "size_bytes": null
+    },
+    {
+      "url": "https://x.com/captainamerica/status/719944021058060289",
+      "job_id": "11309ac1-46c1-4c10-822d-fd15c7941e4e",
+      "platform": "x",
+      "status": "failed",
+      "attempt": 1,
+      "error": {
+        "code": "network_error",
+        "message": "The video service could not be reached safely; try again later."
+      },
+      "title": null,
+      "duration": null,
+      "size_bytes": null
+    },
+    {
+      "url": "https://www.instagram.com/reel/Chunk8-jurw/",
+      "job_id": "51073b92-7d56-4cad-a1d8-3326d293d14a",
+      "platform": "instagram",
+      "status": "failed",
+      "attempt": 1,
+      "error": {
+        "code": "network_error",
+        "message": "The video service could not be reached safely; try again later."
+      },
+      "title": null,
+      "duration": null,
+      "size_bytes": null
+    },
+    {
+      "url": "https://vimeo.com/22439234",
+      "job_id": "e25e44f5-591c-40f7-a9d6-a12dc2039254",
+      "platform": "vimeo",
+      "status": "succeeded",
+      "attempt": 1,
+      "error": null,
+      "title": "The Mountain",
+      "duration": 185.0,
+      "size_bytes": 20459847,
+      "downloaded_bytes": 20459847,
+      "sha256": "138964335c07bee6ff864488101e909553ab5e72204d5baed90258d5c28fe9e7",
+      "media_signature": "1a45dfa3a34286810142f7810142f281",
+      "decode_exit_code": 0,
+      "decode_error_bytes": 0
+    }
+  ],
+  "environment": {
+    "os": "Windows",
+    "python": "3.11.1",
+    "postgresql": "18.6",
+    "yt_dlp": "2026.10.26",
+    "node": "24.22.1",
+    "ffmpeg": "9.0.2",
+    "max_height": 360,
+    "download_timeout_seconds": 90,
+    "max_attempts": 1
+  },
+  "tests": {
+    "passed": 178,
+    "skipped": 0,
+    "warnings": [
+      "Starlette test client httpx deprecation"
+    ],
+    "ruff": "passed",
+    "pip_check": "passed"
+  }
+}

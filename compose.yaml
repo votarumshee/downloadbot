@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_DB: downloadbot
+      POSTGRES_USER: downloadbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U downloadbot -d downloadbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: .
+    environment: &backend_env
+      DOWNLOADBOT_DATA_DIR: /data
+      DOWNLOADBOT_DATABASE_URL: postgresql://downloadbot:${POSTGRES_PASSWORD}@db:5432/downloadbot
+      DOWNLOADBOT_API_KEY: ${DOWNLOADBOT_API_KEY:?Set DOWNLOADBOT_API_KEY}
+      DOWNLOADBOT_ENCRYPTION_KEY: ${DOWNLOADBOT_ENCRYPTION_KEY:?Set DOWNLOADBOT_ENCRYPTION_KEY}
+      DOWNLOADBOT_CLIENTS_JSON: ${DOWNLOADBOT_CLIENTS_JSON:-[]}
+    env_file: .env
+    volumes: ["downloads:/data"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+  worker:
+    build: .
+    command: [python, -m, downloadbot, worker]
+    environment: *backend_env
+    env_file: .env
+    volumes: ["downloads:/data"]
+    depends_on:
+      db: {condition: service_healthy}
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=64m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  downloads:
