@@ -123,6 +123,47 @@ journalctl -u downloadbot-backup.service -n 20 --no-pager
 и тем же `--env-file`. Не менять `POSTGRES_PASSWORD` или мастер-ключ при обычном
 обновлении. Результаты и очередь находятся в постоянных volumes.
 
-Telegram-токен и allowlist пока отсутствуют: развёрнуты PostgreSQL, API и worker.
-Подключение бота описано в README. Для закрытого контента требуется импорт сессии
-технического аккаунта и явное разрешение клиенту на использование этого аккаунта.
+## Подключение Telegram
+
+Бот запускается отдельно через `deploy/compose.telegram.yaml` и
+`downloadbot-telegram.service`. Его собственный root-only файл
+`/etc/downloadbot/telegram.env` содержит:
+
+```dotenv
+TELEGRAM_BOT_TOKEN='<from-BotFather>'
+TELEGRAM_ALLOWED_USER_IDS='<comma-separated-numeric-user-ids>'
+DOWNLOADBOT_API_KEY='<separate-telegram-client-key>'
+DOWNLOADBOT_DATABASE_URL='<PostgreSQL-DSN-with-the-existing-database-password>'
+DOWNLOADBOT_API_URL='http://api:8000'
+TELEGRAM_BOT_INSTANCE='downloadbot'
+```
+
+В `DOWNLOADBOT_CLIENTS_JSON` серверного окружения должен быть отдельный клиент
+`telegram` с тем же клиентским ключом и пустым `allowed_account_ids`. После изменения
+списка клиентов API должен перечитать конфигурацию при перезапуске. Боту не нужны
+административный API-ключ и мастер-ключ шифрования.
+
+Токен проверяется через `getMe` без вывода значения. Для первого владельца можно
+использовать одноразовое сообщение `/start <случайный-код>` в личном чате: ID
+извлекается только из сообщения с ожидаемым кодом, а затем записывается в allowlist.
+Произвольный первый пользователь бота автоматически владельцем не становится.
+
+```sh
+cd /srv/downloadbot
+docker compose --env-file /etc/downloadbot/deployment.env \
+  -f compose.yaml -f deploy/compose.vds.yaml -f deploy/compose.telegram.yaml config --quiet
+docker compose --env-file /etc/downloadbot/deployment.env \
+  -f compose.yaml -f deploy/compose.vds.yaml -f deploy/compose.telegram.yaml build telegram
+docker compose --env-file /etc/downloadbot/deployment.env \
+  -f compose.yaml -f deploy/compose.vds.yaml up -d --wait api worker
+install -m 0644 deploy/downloadbot-telegram.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now downloadbot-telegram.service
+```
+
+Контейнер не получает volume с результатами или cookies; документы скачиваются
+через авторизованный внутренний API. Временное хранилище ограничено 256 МБ для
+четырёх параллельных отправок до 50 МБ. PostgreSQL сохраняет offset и принадлежность
+заданий пользователям. Для закрытого контента требуется импорт сессии технического
+аккаунта и явное разрешение клиенту на использование этого аккаунта; выбор такого
+аккаунта в Telegram пока не реализован.

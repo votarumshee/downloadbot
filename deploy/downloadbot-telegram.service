@@ -1,0 +1,18 @@
+[Unit]
+Description=DownloadBot Telegram adapter
+Requires=docker.service downloadbot.service
+After=docker.service downloadbot.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/downloadbot/telegram.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/srv/downloadbot
+ExecStart=/usr/bin/docker compose --env-file /etc/downloadbot/deployment.env -f compose.yaml -f deploy/compose.vds.yaml -f deploy/compose.telegram.yaml up -d --no-deps telegram
+ExecStop=/usr/bin/docker compose --env-file /etc/downloadbot/deployment.env -f compose.yaml -f deploy/compose.vds.yaml -f deploy/compose.telegram.yaml stop telegram
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

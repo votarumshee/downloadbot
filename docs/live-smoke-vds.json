@@ -82,6 +82,11 @@
       "failed": 1
     },
     "youtube_reason": "bot_verification_requires_session",
-    "telegram_bot_configured": false
+    "telegram_bot_configured": true,
+    "telegram_owner_verified_by_one_time_message": true,
+    "telegram_allowed_user_count": 1,
+    "telegram_api_auth_http_status": 200,
+    "telegram_has_admin_or_master_key": false,
+    "telegram_full_delivery_test": "pending"
   }
 }
