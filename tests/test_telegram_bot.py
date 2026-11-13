@@ -234,7 +234,8 @@ def test_poll_does_not_acknowledge_failed_reply_and_can_recover(harness):
     assert len(api_requests) == 1
 
 
-def test_completed_file_is_uploaded_without_forwarding_api_credentials(harness):
+@pytest.mark.parametrize("ext", ["mp4", "mkv"])
+def test_completed_file_is_uploaded_without_forwarding_api_credentials(harness, ext):
     adapter, api_requests, telegram_requests, set_api, _ = harness
     adapter.state.add_job("ready", 1, 101, 101)
 
@@ -243,7 +244,7 @@ def test_completed_file_is_uploaded_without_forwarding_api_credentials(harness):
             return httpx.Response(
                 200,
                 content=b"test video content",
-                headers={"Content-Disposition": 'attachment; filename="../../video.mp4"'},
+                headers={"Content-Disposition": f'attachment; filename="../../video.{ext}"'},
             )
         return httpx.Response(200, json={"status": "succeeded", "title": "Video", "size_bytes": 18})
 
@@ -252,12 +253,19 @@ def test_completed_file_is_uploaded_without_forwarding_api_credentials(harness):
     assert adapter.state.pending_count() == 0
     assert len(api_requests) == 2
     assert all(request.headers["Authorization"] == "Bearer private-api-key" for request in api_requests)
-    document = telegram_requests[0]
-    assert document.url.path.endswith("/sendDocument")
-    assert "Authorization" not in document.headers
-    assert b'filename="video.mp4"' in document.content
-    assert b"test video content" in document.content
-    assert b"private-api-key" not in document.content
+    video = telegram_requests[0]
+    assert video.url.path.endswith("/sendVideo" if ext == "mp4" else "/sendDocument")
+    assert "Authorization" not in video.headers
+    assert f'filename="video.{ext}"'.encode() in video.content
+    if ext == "mp4":
+        assert b'name="video"' in video.content
+        assert b"Content-Type: video/mp4" in video.content
+        assert b'name="supports_streaming"\r\n\r\ntrue' in video.content
+    else:
+        assert b'name="document"' in video.content
+        assert b"supports_streaming" not in video.content
+    assert b"test video content" in video.content
+    assert b"private-api-key" not in video.content
 
 
 @pytest.mark.parametrize("declared_size", [100, 0])

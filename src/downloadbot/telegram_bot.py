@@ -3,7 +3,7 @@
 Only private chats from explicitly allowed Telegram users are accepted. PostgreSQL
 retains update offsets and job ownership across restarts. Run a single adapter
 instance per bot token/TELEGRAM_BOT_INSTANCE. Telegram delivery is at
-least once: a crash immediately after upload can result in a repeated document.
+least once: a crash immediately after upload can result in a repeated video.
 """
 
 from __future__ import annotations
@@ -25,15 +25,15 @@ from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
 LOG = logging.getLogger(__name__)
-# Hosted Bot API currently permits sendDocument multipart uploads up to 50 MB.
-# https://core.telegram.org/bots/api#senddocument
+# Hosted Bot API currently permits sendVideo multipart uploads up to 50 MB.
+# https://core.telegram.org/bots/api#sendvideo
 TELEGRAM_MAX_FILE_BYTES = 50_000_000
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "expired"})
 HELP = (
     "Пришлите ссылку на видео или /download URL.\n"
     "/status ID — статус вашего задания.\n"
     "/cancel ID — отменить ваше задание.\n"
-    "Готовый файл придёт автоматически, если он не превышает 50 МБ. "
+    "Готовое видео придёт автоматически, если оно не превышает 50 МБ. "
     "Скачивайте только материалы, к которым у вас есть разрешённый доступ."
 )
 
@@ -384,10 +384,16 @@ class TelegramAdapter:
                         raise OversizeFile()
                     output.write(chunk)
                 output.seek(0)
+                inline_video = filename.lower().endswith(".mp4")
+                data = {"chat_id": str(chat_id), "caption": (title or f"Задание {job_id}")[:1024]}
+                if inline_video:
+                    data["supports_streaming"] = "true"
                 await self.telegram_call(
-                    "sendDocument",
-                    data={"chat_id": str(chat_id), "caption": (title or f"Задание {job_id}")[:1024]},
-                    files={"document": (filename, output, "application/octet-stream")},
+                    "sendVideo" if inline_video else "sendDocument",
+                    data=data,
+                    files={"video" if inline_video else "document": (
+                        filename, output, "video/mp4" if inline_video else "application/octet-stream"
+                    )},
                     timeout=httpx.Timeout(180, connect=10),
                 )
 

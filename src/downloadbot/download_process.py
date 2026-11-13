@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .downloader import _MEDIA_EXTENSIONS, DownloadError, public_error
+from .media import prepare_mp4
 from .url_policy import validate_url
 
 
@@ -242,6 +243,8 @@ def perform_download(config: dict) -> dict:
         raise public_error("size_limit")
     if not path.stat().st_size:
         raise public_error("download_failed")
+    if ffmpeg_present:
+        path = prepare_mp4(path, max_file_bytes=max_size, ffmpeg_location=ffmpeg_location)
     title = "".join(char for char in str(info.get("title") or "Video") if ord(char) >= 32 and ord(char) != 127)[:512]
     return {"ok": True, "filename": path.name, "title": title, "ext": path.suffix[1:], "duration": _duration(info)}
 
