@@ -16,6 +16,7 @@ dependencies = [
   "python-dotenv>=1.2,<2",
   "psycopg[binary]>=3.2,<4",
   "yt-dlp[default]>=2025.10.22",
+  "Pillow>=13,<14",
 ]
 
 [project.optional-dependencies]

@@ -2,14 +2,18 @@
 
 Проверено на Ubuntu 26.04 LTS, Docker Engine 29.9.3 и Compose 5.7.1.
 Начальная конфигурация сервера — 4 vCPU, 8 ГБ RAM, 75 ГБ диска.
-Образ приложения содержит Node 24 и FFmpeg; на хосте они не требуются.
+Образ приложения содержит Node 24, FFmpeg и Pillow; на хосте они не требуются.
+Порядок действий для агентов, параметры созданного VPS и правила проверки
+релиза находятся в [AGENTS.md](../AGENTS.md).
 
 ## Структура
 
 | Назначение | Путь |
 |---|---|
-| Исходники и оба Compose-файла | `/srv/downloadbot` |
+| Исходники и Compose-файлы | `/srv/downloadbot` |
 | Рабочие секреты, root-only, mode 0600 | `/etc/downloadbot/deployment.env` |
+| Токен, allowlist и отдельный API-клиент Telegram, mode 0600 | `/etc/downloadbot/telegram.env` |
+| Проверенный commit и manifest SHA-256 | `/etc/downloadbot/release.json`, `/srv/downloadbot/.deployment-manifest.json` |
 | Ссылка для `env_file` базового Compose | `/srv/downloadbot/.env` → `/etc/downloadbot/deployment.env` |
 | PostgreSQL и результаты | Docker volumes `downloadbot_postgres_data`, `downloadbot_downloads` |
 | Локальные дампы PostgreSQL | `/var/backups/downloadbot` |
@@ -122,6 +126,14 @@ journalctl -u downloadbot-backup.service -n 20 --no-pager
 затем выполнить `docker compose ... up -d --build --wait` с обоими Compose-файлами
 и тем же `--env-file`. Не менять `POSTGRES_PASSWORD` или мастер-ключ при обычном
 обновлении. Результаты и очередь находятся в постоянных volumes.
+Если Telegram подключён, к каждому Compose-вызову добавлять
+`-f deploy/compose.telegram.yaml`; пересобирать и обновлять `api worker telegram`.
+Один только рестарт не подхватывает изменённый Python-код из Docker image.
+
+Фотоальбомы сохраняются одним ZIP-артефактом в том же volume, что и видео;
+schema таблицы `jobs` не меняется. Для продолжения отправки большого альбома
+бот при старте добавляет `bot_jobs.delivered_items` с default 0. Это совместимое
+добавление: откат к предыдущему image не требует удаления столбца или восстановления БД.
 
 ## Подключение Telegram
 

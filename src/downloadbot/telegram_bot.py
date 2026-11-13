@@ -9,11 +9,15 @@ least once: a crash immediately after upload can result in a repeated video.
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import logging
 import os
 import re
 import tempfile
 import time
+import zipfile
+from contextlib import ExitStack
 from dataclasses import dataclass
 from email.message import Message
 from typing import Any, Mapping
@@ -24,16 +28,18 @@ import psycopg
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
+from .images import MAX_PHOTO_BYTES, album_members
+
 LOG = logging.getLogger(__name__)
 # Hosted Bot API currently permits sendVideo multipart uploads up to 50 MB.
 # https://core.telegram.org/bots/api#sendvideo
 TELEGRAM_MAX_FILE_BYTES = 50_000_000
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "expired"})
 HELP = (
-    "Пришлите ссылку на видео или /download URL.\n"
+    "Пришлите ссылку на видео или пост с фотографиями, либо /download URL.\n"
     "/status ID — статус вашего задания.\n"
     "/cancel ID — отменить ваше задание.\n"
-    "Готовое видео придёт автоматически, если оно не превышает 50 МБ. "
+    "Видео или фотографии придут автоматически, если результат не превышает 50 МБ. "
     "Скачивайте только материалы, к которым у вас есть разрешённый доступ."
 )
 
@@ -136,10 +142,12 @@ class BotState:
                 chat_id BIGINT NOT NULL,
                 completed INTEGER NOT NULL DEFAULT 0,
                 checked_at DOUBLE PRECISION NOT NULL DEFAULT 0,
+                delivered_items INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(instance, id),
                 UNIQUE(instance, update_id)
             );
             CREATE INDEX IF NOT EXISTS bot_pending_jobs ON bot_jobs(instance, completed, checked_at);
+            ALTER TABLE bot_jobs ADD COLUMN IF NOT EXISTS delivered_items INTEGER NOT NULL DEFAULT 0;
             """
         )
 
@@ -218,6 +226,19 @@ class BotState:
     def finish(self, job_id: str) -> None:
         self.db.execute(
             "UPDATE bot_jobs SET completed = 1 WHERE instance = %s AND id = %s", (self.instance, job_id)
+        )
+
+    def delivery_offset(self, job_id: str) -> int:
+        row = self.db.execute(
+            "SELECT delivered_items FROM bot_jobs WHERE instance = %s AND id = %s",
+            (self.instance, job_id),
+        ).fetchone()
+        return int(row["delivered_items"]) if row else 0
+
+    def delivered(self, job_id: str, count: int) -> None:
+        self.db.execute(
+            "UPDATE bot_jobs SET delivered_items = GREATEST(delivered_items, %s) WHERE instance = %s AND id = %s",
+            (count, self.instance, job_id),
         )
 
 
@@ -348,7 +369,6 @@ class TelegramAdapter:
             if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", job_id):
                 raise ValueError("API returned an invalid job ID")
             self.state.add_job(job_id, update_id, user_id, chat_id)
-        await self.send_text(chat_id, f"Задание создано: {job_id}.\n/status {job_id}")
 
     async def poll_once(self) -> None:
         updates = await self.telegram_call(
@@ -384,6 +404,9 @@ class TelegramAdapter:
                         raise OversizeFile()
                     output.write(chunk)
                 output.seek(0)
+                if filename.lower().endswith(".zip"):
+                    await self.deliver_album(job_id, chat_id, title, output)
+                    return
                 inline_video = filename.lower().endswith(".mp4")
                 data = {"chat_id": str(chat_id), "caption": (title or f"Задание {job_id}")[:1024]}
                 if inline_video:
@@ -396,6 +419,45 @@ class TelegramAdapter:
                     )},
                     timeout=httpx.Timeout(180, connect=10),
                 )
+
+    async def deliver_album(self, job_id: str, chat_id: int, title: str, output) -> None:
+        try:
+            with zipfile.ZipFile(output) as archive:
+                members = album_members(archive, TELEGRAM_MAX_FILE_BYTES)
+                start = self.state.delivery_offset(job_id)
+                if not 0 <= start <= len(members):
+                    raise ValueError("Invalid album delivery offset")
+                for index in range(start, len(members), 10):
+                    batch = members[index:index + 10]
+                    media, files = [], {}
+                    with ExitStack() as stack:
+                        for position, item in enumerate(batch):
+                            with archive.open(item) as photo:
+                                content = photo.read(MAX_PHOTO_BYTES + 1)
+                            if len(content) != item.file_size or not content.startswith(b"\xff\xd8\xff"):
+                                raise ValueError("Invalid album image")
+                            name = f"photo{position}"
+                            buffer = stack.enter_context(io.BytesIO(content))
+                            files[name] = (item.filename, buffer, "image/jpeg")
+                            entry = {"type": "photo", "media": f"attach://{name}"}
+                            if index == 0 and position == 0:
+                                entry["caption"] = (title or "")[:1024]
+                            media.append(entry)
+                        if len(batch) == 1:
+                            await self.telegram_call(
+                                "sendPhoto", data={"chat_id": str(chat_id), "caption": media[0].get("caption", "")},
+                                files={"photo": files["photo0"]}, timeout=httpx.Timeout(180, connect=10),
+                            )
+                        else:
+                            await self.telegram_call(
+                                "sendMediaGroup", data={"chat_id": str(chat_id), "media": json.dumps(media)},
+                                files=files, timeout=httpx.Timeout(180, connect=10),
+                            )
+                    # Preserve successful batches across retries/restarts. As with
+                    # video delivery, a crash before this write may repeat a batch.
+                    self.state.delivered(job_id, index + len(batch))
+        except (zipfile.BadZipFile, ValueError, RuntimeError):
+            raise TelegramError("Invalid image album") from None
 
     async def check_job(self, row: Mapping[str, Any]) -> None:
         job_id, chat_id = row["id"], row["chat_id"]

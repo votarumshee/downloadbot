@@ -17,6 +17,7 @@ iniconfig==2.3.1
 mutagen==1.48.1
 opentelemetry-api==1.45.2
 packaging==26.3
+pillow==13.0.0
 pluggy==1.7.0
 psycopg==3.3.8
 psycopg-binary==3.3.8

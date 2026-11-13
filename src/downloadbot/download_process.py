@@ -114,6 +114,8 @@ def perform_download(config: dict) -> dict:
     from yt_dlp.globals import all_plugins_loaded, plugin_dirs
     from yt_dlp.networking._urllib import UrllibRH
 
+    from .images import ImagePost, download_album, post_extractor
+
     # Local plugin discovery must not load arbitrary code into the worker.
     all_plugins_loaded.value = True
     plugin_dirs.value = []
@@ -231,8 +233,11 @@ def perform_download(config: dict) -> dict:
     }
     extractor_key = {"youtube": "Youtube", "x": "Twitter", "instagram": "Instagram", "vimeo": "Vimeo"}[platform]
     with RestrictedYoutubeDL(params, auto_init=False) as ydl:
-        ydl.add_info_extractor(get_info_extractor(extractor_key)())
-        info = ydl.extract_info(url, download=True)
+        ydl.add_info_extractor(post_extractor(platform, get_info_extractor(extractor_key))())
+        try:
+            info = ydl.extract_info(url, download=True)
+        except ImagePost as post:
+            return download_album(ydl, post, platform=platform, output_dir=output_dir, max_size=max_size)
     if not isinstance(info, dict):
         raise public_error("unavailable")
     candidates = [path for path in output_dir.iterdir() if path.is_file() and path.name == f"media.{path.suffix.lstrip('.')}" and path.suffix.lstrip(".") in _MEDIA_EXTENSIONS]

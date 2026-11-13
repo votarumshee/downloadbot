@@ -1,17 +1,19 @@
 """Telegram adapter tests use only MockTransport; no messages leave this process."""
 
 import asyncio
+import io
 import json
 import os
 import time
 import uuid
+import zipfile
 from dataclasses import replace
 
 import httpx
 import pytest
 
 from downloadbot import telegram_bot
-from downloadbot.telegram_bot import BotConfig, BotState, TelegramAdapter, TelegramError
+from downloadbot.telegram_bot import BotConfig, BotState, TelegramAdapter
 
 
 class MemoryState:
@@ -29,7 +31,8 @@ class MemoryState:
 
     def add_job(self, job_id, update_id, user_id, chat_id):
         self.jobs[job_id] = dict(
-            id=job_id, update_id=update_id, user_id=user_id, chat_id=chat_id, completed=0, checked_at=0
+            id=job_id, update_id=update_id, user_id=user_id, chat_id=chat_id, completed=0, checked_at=0,
+            delivered_items=0,
         )
 
     def job_for_update(self, update_id):
@@ -55,6 +58,12 @@ class MemoryState:
 
     def finish(self, job_id):
         self.jobs[job_id]["completed"] = 1
+
+    def delivery_offset(self, job_id):
+        return self.jobs[job_id]["delivered_items"]
+
+    def delivered(self, job_id, count):
+        self.jobs[job_id]["delivered_items"] = max(self.jobs[job_id]["delivered_items"], count)
 
 
 def update(text="https://www.youtube.com/watch?v=BaW_jenozKc", user_id=101, chat_type="private", update_id=8):
@@ -168,7 +177,7 @@ def test_download_replay_reuses_job_with_stable_idempotency_key(harness):
     assert request.headers["Idempotency-Key"] == "telegram:123:8"
     assert json.loads(request.content) == {"url": update()["message"]["text"], "max_height": 720}
     assert adapter.state.owns("job-123", 101)
-    assert len(telegram_requests) == 2
+    assert not telegram_requests
 
 
 def test_foreign_job_is_denied_before_api_request(harness):
@@ -209,19 +218,20 @@ def test_pending_limit_prevents_additional_job(harness):
     assert "лимит" in json.loads(telegram_requests[0].content)["text"]
 
 
-def test_poll_does_not_acknowledge_failed_reply_and_can_recover(harness):
-    adapter, api_requests, _, _, set_telegram = harness
+def test_poll_does_not_acknowledge_failed_submission_and_can_recover(harness):
+    adapter, api_requests, telegram_requests, set_api, set_telegram = harness
 
     def failing(request):
         if request.url.path.endswith("getUpdates"):
             return httpx.Response(200, json={"ok": True, "result": [update()]})
-        return httpx.Response(503, json={"ok": False})
+        return httpx.Response(200, json={"ok": True, "result": {}})
 
     set_telegram(failing)
-    with pytest.raises(TelegramError):
+    set_api(lambda request: httpx.Response(503))
+    with pytest.raises(httpx.HTTPStatusError):
         asyncio.run(adapter.poll_once())
     assert adapter.state.offset == 0
-    assert adapter.state.owns("job-123", 101)
+    assert not adapter.state.owns("job-123", 101)
 
     def recovered(request):
         return httpx.Response(
@@ -229,9 +239,12 @@ def test_poll_does_not_acknowledge_failed_reply_and_can_recover(harness):
         )
 
     set_telegram(recovered)
+    set_api(lambda request: httpx.Response(202, json={"id": "job-123"}))
     asyncio.run(adapter.poll_once())
     assert adapter.state.offset == 9
-    assert len(api_requests) == 1
+    assert len(api_requests) == 2
+    assert adapter.state.owns("job-123", 101)
+    assert all(request.url.path.endswith("/getUpdates") for request in telegram_requests)
 
 
 @pytest.mark.parametrize("ext", ["mp4", "mkv"])
@@ -290,6 +303,65 @@ def test_oversized_file_never_reaches_telegram(harness, monkeypatch, declared_si
     assert len(telegram_requests) == 1
     assert telegram_requests[0].url.path.endswith("/sendMessage")
     assert "50 МБ" in json.loads(telegram_requests[0].content)["text"]
+
+
+def image_album(count):
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index in range(1, count + 1):
+            archive.writestr(f"image-{index:03}.jpg", b"\xff\xd8\xffphoto" + str(index).encode())
+    return output.getvalue()
+
+
+@pytest.mark.parametrize(("count", "methods"), [
+    (1, ["sendPhoto"]), (4, ["sendMediaGroup"]), (10, ["sendMediaGroup"]),
+    (11, ["sendMediaGroup", "sendPhoto"]), (21, ["sendMediaGroup", "sendMediaGroup", "sendPhoto"]),
+])
+def test_all_post_images_are_uploaded_in_order_without_credentials(harness, count, methods):
+    adapter, _, requests, set_api, _ = harness
+    adapter.state.add_job("album", 1, 101, 101)
+    def handler(request):
+        if request.url.path.endswith("/file"):
+            return httpx.Response(200, content=image_album(count), headers={
+                "Content-Disposition": 'attachment; filename="images.zip"',
+            })
+        return httpx.Response(200, json={"status": "succeeded", "ext": "zip", "title": "Album caption"})
+    set_api(handler)
+    asyncio.run(adapter.monitor_once())
+    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == methods
+    assert adapter.state.delivery_offset("album") == count and adapter.state.pending_count() == 0
+    body = b"".join(request.content for request in requests)
+    assert body.count(b"Album caption") == 1
+    for index in range(1, count + 1):
+        assert body.count(f'filename="image-{index:03}.jpg"'.encode()) == 1
+    assert b"private-api-key" not in body
+    assert all("Authorization" not in request.headers for request in requests)
+
+
+def test_album_delivery_resumes_after_a_failed_batch(harness):
+    adapter, _, requests, set_api, set_telegram = harness
+    adapter.state.add_job("album", 1, 101, 101)
+    def handler(request):
+        if request.url.path.endswith("/file"):
+            return httpx.Response(200, content=image_album(11), headers={
+                "Content-Disposition": 'attachment; filename="album.zip"',
+            })
+        return httpx.Response(200, json={"status": "succeeded", "title": "Album"})
+    set_api(handler)
+    def failing_second_batch(request):
+        return httpx.Response(503) if request.url.path.endswith("/sendPhoto") else httpx.Response(
+            200, json={"ok": True, "result": []},
+        )
+    set_telegram(failing_second_batch)
+    asyncio.run(adapter.monitor_once())
+    assert adapter.state.delivery_offset("album") == 10 and adapter.state.pending_count() == 1
+    set_telegram(lambda request: httpx.Response(200, json={"ok": True, "result": {}}))
+    asyncio.run(adapter.monitor_once())
+    assert adapter.state.pending_count() == 0
+    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == [
+        "sendMediaGroup", "sendPhoto", "sendPhoto",
+    ]
+    assert b"image-011.jpg" in requests[-1].content and b"image-001.jpg" not in requests[-1].content
 
 
 def test_failure_message_does_not_forward_backend_secrets(harness):
@@ -355,6 +427,12 @@ def test_postgres_state_survives_restart_and_isolates_instances():
             BotState(database_url, instance)
         state.checked("job-123")
         assert state.pending(1)[0]["checked_at"] > 0
+        state.delivered("job-123", 10)
+        state.delivered("job-123", 5)
+        assert state.delivery_offset("job-123") == 10
+        state.close()
+        state = BotState(database_url, instance)
+        assert state.delivery_offset("job-123") == 10
         other = BotState(database_url, other_instance)
         other.bind_bot("456")
         assert other.offset == 0

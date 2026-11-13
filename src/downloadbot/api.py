@@ -52,6 +52,7 @@ def job_public(job: dict) -> dict:
         "started_at": timestamp(job["started_at"]), "finished_at": timestamp(job["finished_at"]),
         "expires_at": timestamp(job["expires_at"]), "title": job["title"],
         "size_bytes": job["size_bytes"], "duration": job["duration"], "ext": job["ext"],
+        "media_type": ("images" if job["ext"] == "zip" else "video") if job["ext"] else None,
         "error": {"code": job["error_code"], "message": job["error_message"]} if job["error_code"] else None,
         "file_url": f"/v1/jobs/{job['id']}/file" if status == "succeeded" else None,
     }
@@ -197,7 +198,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = (settings.files_dir / (job["artifact_path"] or "")).resolve()
         if not path.is_relative_to(settings.files_dir / job_id) or not path.is_file():
             raise HTTPException(410, "Download is no longer available")
-        return FileResponse(path, filename=f"video-{job_id}.{job['ext']}", media_type="application/octet-stream",
+        prefix = "images" if job["ext"] == "zip" else "video"
+        media_type = "application/zip" if job["ext"] == "zip" else "application/octet-stream"
+        return FileResponse(path, filename=f"{prefix}-{job_id}.{job['ext']}", media_type=media_type,
                             headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.get("/v1/accounts", tags=["accounts"])

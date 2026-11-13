@@ -65,7 +65,7 @@ def main():
                             count += len(chunk)
                             prefix = (prefix + chunk)[:16]
                     assert count == job["size_bytes"] and count > 0
-                    assert b"ftyp" in prefix or prefix.startswith((b"\x1aE\xdf\xa3", b"FLV", b"\x47")), "Invalid media signature"
+                    assert b"ftyp" in prefix or prefix.startswith((b"\x1aE\xdf\xa3", b"FLV", b"\x47", b"PK\x03\x04")), "Invalid media signature"
                     row.update(downloaded_bytes=count, sha256=sha.hexdigest(), media_signature=prefix.hex())
                 print(f"Finished {row['platform']}: {row['status']} {row.get('error') or ''}", flush=True)
                 del pending[job_id]

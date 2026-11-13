@@ -1,4 +1,5 @@
 import time
+import zipfile
 
 import pytest
 from conftest import ADMIN_KEY, ALICE_KEY, BOB_KEY, COOKIE_VALUE, YOUTUBE_COOKIES
@@ -203,6 +204,24 @@ def test_result_path_cannot_escape_own_job_directory(client, settings, store):
         db.execute("UPDATE jobs SET artifact_path=%s WHERE id=%s", (str(outside), job["id"]))
     denied = client.get(f"/v1/jobs/{job['id']}/file", headers=auth())
     assert denied.status_code == 410 and "private-content" not in denied.text
+
+
+def test_photo_album_has_authenticated_zip_download_and_media_type(client, settings, store):
+    queued = submit(client, url="https://x.com/test/status/123").json()
+    assert store.claim("worker")["id"] == queued["id"]
+    artifact = settings.files_dir / queued["id"] / "attempt1" / "media.zip"
+    artifact.parent.mkdir(parents=True)
+    with zipfile.ZipFile(artifact, "w") as archive:
+        archive.writestr("image-001.jpg", b"\xff\xd8\xffsynthetic-photo")
+    assert store.finish(queued["id"], "worker", artifact_path=artifact.relative_to(settings.files_dir).as_posix(),
+                        title="Photos", ext="zip", size_bytes=artifact.stat().st_size, duration=None)
+    public = client.get(f"/v1/jobs/{queued['id']}", headers=auth()).json()
+    assert public["media_type"] == "images" and public["duration"] is None
+    assert "artifact_path" not in public
+    assert client.get(public["file_url"], headers=auth(BOB_KEY)).status_code == 404
+    response = client.get(public["file_url"], headers=auth())
+    assert response.status_code == 200 and response.headers["content-type"] == "application/zip"
+    assert response.content == artifact.read_bytes()
 
 
 def test_non_ascii_invalid_bearer_is_rejected_without_server_error(client):

@@ -34,7 +34,7 @@ class DownloadError(Exception):
 _PUBLIC_MESSAGES = {
     "auth_required": "This video requires an account with access or refreshed account cookies.",
     "rate_limited": "The video service is rate limiting requests; try again later.",
-    "unavailable": "This video is unavailable, unsupported, live, or contains multiple videos.",
+    "unavailable": "This post is unavailable, unsupported, live, or contains multiple videos or no supported media.",
     "size_limit": "The video exceeds the configured file size limit.",
     "duration_limit": "The video exceeds the configured duration limit.",
     "network_error": "The video service could not be reached safely; try again later.",
@@ -45,6 +45,7 @@ _PUBLIC_MESSAGES = {
 }
 _RETRYABLE = {"rate_limited", "network_error", "timeout"}
 _MEDIA_EXTENSIONS = {"mp4", "webm", "mkv", "mov", "m4v", "3gp", "flv", "ts"}
+_ARTIFACT_EXTENSIONS = _MEDIA_EXTENSIONS | {"zip"}
 
 
 def public_error(code: str) -> DownloadError:
@@ -178,7 +179,7 @@ class YtDlpDownloader:
             raise public_error(result.get("code", "download_failed"))
         filename = result.get("filename", "")
         ext = result.get("ext", "")
-        if ext not in _MEDIA_EXTENSIONS or filename != f"media.{ext}":
+        if ext not in _ARTIFACT_EXTENSIONS or filename != f"media.{ext}":
             raise public_error("download_failed")
         path = output_dir / filename
         if path.is_symlink() or not path.is_file() or path.resolve().parent != output_dir:
