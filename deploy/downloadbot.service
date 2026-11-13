@@ -1,0 +1,17 @@
+[Unit]
+Description=DownloadBot API, worker and PostgreSQL
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+WorkingDirectory=/srv/downloadbot
+ExecStart=/usr/bin/docker compose --env-file /etc/downloadbot/deployment.env -f compose.yaml -f deploy/compose.vds.yaml up -d --wait --wait-timeout 180
+ExecStop=/usr/bin/docker compose --env-file /etc/downloadbot/deployment.env -f compose.yaml -f deploy/compose.vds.yaml stop
+TimeoutStartSec=240
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

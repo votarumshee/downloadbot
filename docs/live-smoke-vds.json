@@ -1,0 +1,87 @@
+{
+  "tested_at": "2026-11-13T19:56:53.741244+00:00",
+  "transport": "real HTTP API and worker",
+  "elapsed_seconds": 21.64,
+  "results": [
+    {
+      "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+      "job_id": "2ef0fe50-fec7-4f9f-839a-8caf11246b0f",
+      "platform": "youtube",
+      "status": "failed",
+      "attempt": 1,
+      "error": {
+        "code": "auth_required",
+        "message": "This video requires an account with access or refreshed account cookies."
+      },
+      "title": null,
+      "duration": null,
+      "size_bytes": null
+    },
+    {
+      "url": "https://x.com/captainamerica/status/719944021058060289",
+      "job_id": "e02c8019-5284-4e62-bc49-553ed445ece4",
+      "platform": "x",
+      "status": "succeeded",
+      "attempt": 1,
+      "error": null,
+      "title": "Captain America - @King0fNerd Are you sure you made the right choice? Find out in theat...",
+      "duration": 3.17,
+      "size_bytes": 184236,
+      "downloaded_bytes": 184236,
+      "sha256": "12f42ec68badea57a05f197f6b9c077ba66f72f6e96776c5b5861cc7a3ceca66",
+      "media_signature": "0000001c667479706d70343200000000",
+      "decode_exit_code": 0,
+      "decode_error_bytes": 0
+    },
+    {
+      "url": "https://www.instagram.com/reel/Chunk8-jurw/",
+      "job_id": "71abfd71-5c47-4cfe-885c-2c1d0e9ada63",
+      "platform": "instagram",
+      "status": "succeeded",
+      "attempt": 1,
+      "error": null,
+      "title": "Video by instagram",
+      "duration": null,
+      "size_bytes": 918120,
+      "downloaded_bytes": 918120,
+      "sha256": "7a956bbb30f3fa0488b2fc687a077fb6156cd1b5fdd0b98157b26e6355a950ef",
+      "media_signature": "000000206674797069736f6d00000200",
+      "decode_exit_code": 0,
+      "decode_error_bytes": 0
+    },
+    {
+      "url": "https://vimeo.com/22439234",
+      "job_id": "828e682d-083a-4da2-96d5-5e707b505b2f",
+      "platform": "vimeo",
+      "status": "succeeded",
+      "attempt": 1,
+      "error": null,
+      "title": "The Mountain",
+      "duration": 185.0,
+      "size_bytes": 20459880,
+      "downloaded_bytes": 20459880,
+      "sha256": "3879b88c9e02fe59922cda47530395dc0b6ae009def88d08d6f462c67a901ffa",
+      "media_signature": "1a45dfa3a34286810142f7810142f281",
+      "decode_exit_code": 0,
+      "decode_error_bytes": 0
+    }
+  ],
+  "environment": {
+    "os": "Ubuntu 26.04 LTS",
+    "docker_engine": "29.9.3",
+    "compose": "5.7.1",
+    "yt_dlp": "2026.10.26",
+    "max_height": 360,
+    "accounts_used": false
+  },
+  "verification": {
+    "readyz_http_status": 200,
+    "backup_restore_job_count": 4,
+    "jobs_after_restart": {
+      "succeeded": 3,
+      "failed": 1
+    },
+    "youtube_reason": "bot_verification_requires_session",
+    "telegram_bot_configured": false
+  }
+}

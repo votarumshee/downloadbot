@@ -5,6 +5,9 @@
 
 [Техническое задание](docs/TASK.md) · [Проверка на реальных сервисах](docs/LIVE_TESTS.md)
 
+Для отдельного VDS: [развёртывание и эксплуатация](docs/VDS_DEPLOYMENT.md),
+[реальный прогон на VDS от 13 ноября](docs/LIVE_TESTS_VDS.md).
+
 ## Быстрый запуск
 
 Требуются Python 3.11+, PostgreSQL 16+, Node.js 22+ или Deno для YouTube,
