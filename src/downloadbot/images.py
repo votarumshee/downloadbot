@@ -44,6 +44,9 @@ def _instagram_photos(product: dict) -> list[str]:
 
 def post_extractor(platform: str, base):
     """Extend the installed extractor, retaining its authenticated access checks."""
+    # yt-dlp's registry can return a lazy proxy. Subclass the actual extractor:
+    # a lazy proxy instantiates its original class and cannot be subclassed.
+    base = getattr(base, "real_class", base)
     if platform == "x":
         class TwitterPhotosIE(base):
             @classmethod

@@ -22,6 +22,17 @@ def photo_bytes(color="red", size=(80, 60)):
     return output.getvalue()
 
 
+@pytest.mark.parametrize(("platform", "key"), [("x", "Twitter"), ("instagram", "Instagram")])
+def test_installed_extractors_instantiate_the_photo_extension(platform, key):
+    from yt_dlp.extractor import get_info_extractor
+    from yt_dlp.extractor.common import InfoExtractor
+
+    extended = post_extractor(platform, get_info_extractor(key))
+    extractor = extended()
+    assert isinstance(extractor, InfoExtractor) and type(extractor) is extended
+    assert extractor.ie_key() == key
+
+
 def test_photo_post_uses_real_ytdlp_pipeline_and_preserves_all_images(monkeypatch, tmp_path):
     import yt_dlp.extractor
     from yt_dlp import YoutubeDL
